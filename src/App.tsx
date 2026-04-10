@@ -24,7 +24,12 @@ export default function App() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [apiStatus, setApiStatus] = useState<APIStatus>({ type: 'mock', label: 'Mock mode', connected: false });
   const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverUrl, setServerUrl] = useState('http://localhost:8088');
+  const [serverUrl, setServerUrl] = useState(() => {
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1'
+      ? 'http://localhost:8088'
+      : `http://${host}:8088`;
+  });
   const api = useRef(getBonsaiAPI().api);
 
   // Agent state

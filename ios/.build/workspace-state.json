@@ -1,0 +1,113 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mlx-swift",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/PrismML-Eng/mlx-swift.git",
+          "name" : "mlx-swift"
+        },
+        "state" : {
+          "checkoutState" : {
+            "branch" : "prism",
+            "revision" : "ed88e939adc61a595e53d02e40aac20761313e5f"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "mlx-swift"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mlx-swift-lm",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ml-explore/mlx-swift-lm.git",
+          "name" : "mlx-swift-lm"
+        },
+        "state" : {
+          "checkoutState" : {
+            "branch" : "main",
+            "revision" : "ab04a9c6eaf134f71b2582181e4d7ec10ad093b3"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "mlx-swift-lm"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-numerics",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-numerics",
+          "name" : "swift-numerics"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+            "version" : "1.1.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-numerics"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-syntax",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/swiftlang/swift-syntax.git",
+          "name" : "swift-syntax"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0687f71944021d616d34d922343dcef086855920",
+            "version" : "600.0.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-syntax"
+      }
+    ],
+    "prebuilts" : [
+      {
+        "cModules" : [
+
+        ],
+        "checkoutPath" : "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/.build/checkouts/swift-syntax",
+        "identity" : "swift-syntax",
+        "includePath" : [
+          "Sources/_SwiftLibraryPluginProviderCShims/include",
+          "Sources/_SwiftSyntaxCShims/include"
+        ],
+        "libraryName" : "MacroSupport",
+        "path" : "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/.build/prebuilts/swift-syntax/600.0.1/swiftlang-6.2.0.19.9-MacroSupport-macos_aarch64",
+        "products" : [
+          "swift-syntaxPackageTests",
+          "SwiftBasicFormat",
+          "SwiftCompilerPlugin",
+          "SwiftDiagnostics",
+          "SwiftIDEUtils",
+          "SwiftOperators",
+          "SwiftParser",
+          "SwiftParserDiagnostics",
+          "SwiftRefactor",
+          "SwiftSyntax",
+          "SwiftSyntaxBuilder",
+          "SwiftSyntaxMacros",
+          "SwiftSyntaxMacroExpansion",
+          "SwiftSyntaxMacrosTestSupport",
+          "SwiftSyntaxMacrosGenericTestSupport",
+          "_SwiftCompilerPluginMessageHandling",
+          "_SwiftLibraryPluginProvider"
+        ],
+        "version" : "600.0.1"
+      }
+    ]
+  },
+  "version" : 7
+}

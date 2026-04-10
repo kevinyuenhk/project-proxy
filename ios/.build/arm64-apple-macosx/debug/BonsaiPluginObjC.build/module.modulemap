@@ -1,0 +1,4 @@
+module BonsaiPluginObjC {
+    umbrella header "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/Sources/BonsaiPluginObjC/include/BonsaiPluginObjC.h"
+    export *
+}

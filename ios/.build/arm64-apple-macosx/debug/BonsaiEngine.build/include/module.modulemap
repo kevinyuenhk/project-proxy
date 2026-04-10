@@ -1,0 +1,3 @@
+module BonsaiEngine {
+    header "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/.build/arm64-apple-macosx/debug/BonsaiEngine.build/include/BonsaiEngine-Swift.h"
+}

@@ -1,0 +1,3 @@
+module MLXHuggingFace {
+    header "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/.build/arm64-apple-macosx/debug/MLXHuggingFace.build/include/MLXHuggingFace-Swift.h"
+}

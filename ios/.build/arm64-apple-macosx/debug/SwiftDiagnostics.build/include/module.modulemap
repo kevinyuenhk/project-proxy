@@ -1,0 +1,3 @@
+module SwiftDiagnostics {
+    header "/Users/kevinyuen/.openclaw/workspace/projects/project-proxy/ios/.build/arm64-apple-macosx/debug/SwiftDiagnostics.build/include/SwiftDiagnostics-Swift.h"
+}

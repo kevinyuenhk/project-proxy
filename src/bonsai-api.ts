@@ -158,7 +158,7 @@ export class HttpBonsaiAPI implements BonsaiAPI {
 
   async checkConnection(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(`${this.baseUrl}/v1/models`, { signal: AbortSignal.timeout(3000) });
       this.connected = res.ok;
     } catch {
       this.connected = false;

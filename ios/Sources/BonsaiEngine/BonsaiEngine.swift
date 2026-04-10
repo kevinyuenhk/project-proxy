@@ -4,8 +4,8 @@
 import Foundation
 import MLX
 import MLXNN
-import MLXLM
-import MLXLMCommon
+import MLXLLM
+import MLXLLMCommon
 
 /// Manages model loading, unloading, and text generation.
 ///
@@ -88,7 +88,7 @@ public actor BonsaiEngine {
             try await downloadModel(config: config, to: modelDir)
         }
 
-        // Load via MLXLM
+        // Load via MLXLLM
         let modelPath = modelDir.appendingPathComponent("model.safetensors")
         let configPath = modelDir.appendingPathComponent("config.json")
 
@@ -97,7 +97,7 @@ public actor BonsaiEngine {
             throw EngineError.generationError("Model files not found in \(modelDir.path)")
         }
 
-        // Use MLXLM's ModelRegistry or direct loading
+        // Use MLXLLM's ModelRegistry or direct loading
         // Note: Bonsai models use standard Llama architecture — try Llama registry first
         do {
             let container = try await LLMModelFactory.shared.loadContainer(
