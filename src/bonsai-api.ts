@@ -13,7 +13,7 @@ export interface Message {
 export interface BonsaiAPI {
   isNativeAvailable(): boolean;
   loadModel(modelId: string): Promise<void>;
-  generate(messages: { role: 'user' | 'assistant'; content: string }[], onToken: (token: string) => void): Promise<string>;
+  generate(messages: { role: 'user' | 'assistant'; content: string }[], onToken: (token: string) => void, systemPrompt?: string): Promise<string>;
   stopGeneration(): Promise<void>;
 }
 
@@ -32,6 +32,7 @@ class MockBonsaiAPI implements BonsaiAPI {
   async generate(
     messages: { role: 'user' | 'assistant'; content: string }[],
     onToken: (token: string) => void,
+    _systemPrompt?: string,
   ): Promise<string> {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content ?? '';
 
@@ -94,10 +95,12 @@ class NativeBonsaiAPI implements BonsaiAPI {
   async generate(
     messages: { role: 'user' | 'assistant'; content: string }[],
     onToken: (token: string) => void,
+    systemPrompt?: string,
   ): Promise<string> {
     const { result: _r } = await this.plugin.generate({
       messages,
       stream: true,
+      systemPrompt,
     });
 
     return new Promise(async (resolve, reject) => {
@@ -132,7 +135,7 @@ export class HttpBonsaiAPI implements BonsaiAPI {
   private connected = false;
   private abortController: AbortController | null = null;
 
-  constructor(baseUrl = 'http://localhost:8080') {
+  constructor(baseUrl = 'http://localhost:8088') {
     this.baseUrl = baseUrl;
   }
 
@@ -172,12 +175,13 @@ export class HttpBonsaiAPI implements BonsaiAPI {
   async generate(
     messages: { role: 'user' | 'assistant'; content: string }[],
     onToken: (token: string) => void,
+    systemPrompt?: string,
   ): Promise<string> {
     this.abortController = new AbortController();
 
     const systemMsg: Message = {
       role: 'system',
-      content: 'You are Bonsai, a helpful AI assistant running locally via llama.cpp.',
+      content: systemPrompt || 'You are Bonsai, a helpful AI assistant running locally via llama.cpp.',
     };
 
     const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {

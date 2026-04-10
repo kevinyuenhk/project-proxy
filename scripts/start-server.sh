@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BONSAI_DIR="${BONSAI_DEMO_DIR:-$HOME/Bonsai-demo}"
-PORT="${LLAMA_PORT:-8080}"
+PORT="${LLAMA_PORT:-8088}"
 
 echo "🪴 Bonsai llama.cpp Server Setup"
 echo "================================="
