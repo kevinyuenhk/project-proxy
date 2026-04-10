@@ -1,257 +1,120 @@
-import { useState, useRef, useCallback } from 'react'
-import ChatView from './components/ChatView'
-import ModelSelector from './components/ModelSelector'
+import { useState, useCallback, useRef, useEffect } from 'react';
+import ChatView from './components/ChatView';
+import ModelSelector from './components/ModelSelector';
+import { type ModelInfo, type Message, getBonsaiAPI } from './bonsai-api';
 
-export interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp: Date
-}
+const MODELS: ModelInfo[] = [
+  { id: 'Bonsai-8B-mlx-1bit', name: 'Bonsai 8B', size: '1.15 GB', description: 'Best quality, slower' },
+  { id: 'Bonsai-4B-mlx-1bit', name: 'Bonsai 4B', size: '0.57 GB', description: 'Balanced speed/quality' },
+  { id: 'Bonsai-1.7B-mlx-1bit', name: 'Bonsai 1.7B', size: '0.27 GB', description: 'Fastest, smaller context' },
+];
 
-export interface ModelInfo {
-  id: string
-  name: string
-  repo: string
-  vram: string
-}
-
-// Capacitor bridge — uses native plugin on iOS, mock on web
-const BonsaiPlugin = (window as any).Capacitor?.isNativePlatform()
-  ? (window as any).Capacitor.Plugins?.BonsaiPlugin
-  : null
+const DEFAULT_MODEL = MODELS[0];
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [selectedModel, setSelectedModel] = useState<string | null>(null)
-  const [modelLoaded, setModelLoaded] = useState(false)
-  const [currentModelId, setCurrentModelId] = useState<string | null>(null)
-  const [models, setModels] = useState<ModelInfo[]>([])
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const streamMsgId = useRef<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentModel, setCurrentModel] = useState<ModelInfo>(DEFAULT_MODEL);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const api = useRef(getBonsaiAPI());
 
-  // Fetch available models
-  const fetchModels = useCallback(async () => {
-    try {
-      if (BonsaiPlugin) {
-        const result = await BonsaiPlugin.getModels()
-        setModels(result.models || [])
-      } else {
-        // Mock models for web dev
-        setModels([
-          { id: 'Bonsai-1.7B-mlx-1bit', name: 'Bonsai 1.7B', repo: 'prism-ml/Bonsai-1.7B-mlx-1bit', vram: '~2 GB' },
-          { id: 'Bonsai-4B-mlx-1bit', name: 'Bonsai 4B', repo: 'prism-ml/Bonsai-4B-mlx-1bit', vram: '~4 GB' },
-          { id: 'Bonsai-8B-mlx-1bit', name: 'Bonsai 8B', repo: 'prism-ml/Bonsai-8B-mlx-1bit', vram: '~6 GB' },
-        ])
-      }
-    } catch (e: any) {
-      setError(`Failed to fetch models: ${e.message || e}`)
+  useEffect(() => {
+    // Check if native plugin is available
+    const available = api.current.isNativeAvailable();
+    if (available) {
+      api.current.loadModel(DEFAULT_MODEL.id).then(() => setIsModelLoaded(true));
     }
-  }, [])
+    // In mock mode, model is "loaded" immediately
+    if (!available) setIsModelLoaded(true);
+  }, []);
 
-  // Load model
-  const loadModel = useCallback(async (modelId: string) => {
-    setLoading(true)
-    setError(null)
+  const handleSend = useCallback(async (text: string) => {
+    const userMsg: Message = { role: 'user', content: text };
+    const assistantMsg: Message = { role: 'assistant', content: '' };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    setIsStreaming(true);
+
     try {
-      if (BonsaiPlugin) {
-        await BonsaiPlugin.loadModel({ modelId })
+      if (isStreaming) {
+        await api.current.stopGeneration();
+        return;
       }
-      setSelectedModel(modelId)
-      setModelLoaded(true)
-      setCurrentModelId(modelId)
-    } catch (e: any) {
-      setError(`Failed to load model: ${e.message || e}`)
+
+      // Get conversation history for context
+      const history = [...messages, userMsg]
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      await api.current.generate(history, (token) => {
+        assistantMsg.content += token;
+        setMessages(prev => [...prev.slice(0, -1), { ...assistantMsg }]);
+      });
+    } catch (err) {
+      assistantMsg.content = `Error: ${err instanceof Error ? err.message : String(err)}`;
+      setMessages(prev => [...prev.slice(0, -1), { ...assistantMsg }]);
     } finally {
-      setLoading(false)
+      setIsStreaming(false);
     }
-  }, [])
+  }, [messages, isStreaming]);
 
-  // Send message
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || !modelLoaded || isStreaming) return
+  const handleStop = useCallback(async () => {
+    await api.current.stopGeneration();
+    setIsStreaming(false);
+  }, []);
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: content.trim(),
-      timestamp: new Date(),
-    }
-    setMessages(prev => [...prev, userMsg])
+  const handleModelSelect = useCallback(async (model: ModelInfo) => {
+    setShowModelPicker(false);
+    if (model.id === currentModel.id) return;
 
-    const assistantMsg: Message = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-    }
-    streamMsgId.current = assistantMsg.id
-    setMessages(prev => [...prev, assistantMsg])
-    setIsStreaming(true)
-    setError(null)
+    setCurrentModel(model);
+    setIsModelLoaded(false);
+    setIsModelLoading(true);
+    setMessages([]);
 
     try {
-      if (BonsaiPlugin) {
-        // Native streaming
-        await BonsaiPlugin.startStream({
-          prompt: content.trim(),
-          systemPrompt: systemPrompt || undefined,
-        })
-      } else {
-        // Mock response for web dev
-        await new Promise(r => setTimeout(r, 1500))
-        const fake = `Hello! I'm Bonsai (${selectedModel}). This is a mock response for web development. Connect via Capacitor on iOS to use the real model.\n\nYour prompt was: "${content.trim()}"`
-        setMessages(prev =>
-          prev.map(m => m.id === assistantMsg.id ? { ...m, content: fake } : m)
-        )
-      }
-    } catch (e: any) {
-      setError(`Generation failed: ${e.message || e}`)
+      await api.current.loadModel(model.id);
+      setIsModelLoaded(true);
+    } catch (err) {
+      setMessages([{
+        role: 'system',
+        content: `Failed to load model: ${err instanceof Error ? err.message : String(err)}`,
+      }]);
     } finally {
-      setIsStreaming(false)
-      streamMsgId.current = null
+      setIsModelLoading(false);
     }
-  }, [modelLoaded, isStreaming, systemPrompt, selectedModel])
+  }, [currentModel.id]);
 
-  // Stop generation
-  const stopGeneration = useCallback(async () => {
-    if (BonsaiPlugin) {
-      await BonsaiPlugin.stopGeneration()
-    }
-    setIsStreaming(false)
-  }, [])
-
-  // Clear messages
-  const clearMessages = useCallback(() => {
-    setMessages([])
-  }, [])
-
-  // Listen for native stream events
-  useState(() => {
-    if (!BonsaiPlugin) return
-
-    const tokenListener = BonsaiPlugin.addListener('streamToken', (data: any) => {
-      const id = streamMsgId.current
-      if (!id) return
-      setMessages(prev =>
-        prev.map(m => m.id === id ? { ...m, content: m.content + data.token } : m)
-      )
-    })
-
-    const endListener = BonsaiPlugin.addListener('streamEnd', () => {
-      setIsStreaming(false)
-    })
-
-    const errorListener = BonsaiPlugin.addListener('streamError', (data: any) => {
-      setError(data.error)
-      setIsStreaming(false)
-    })
-
-    return () => {
-      tokenListener?.remove()
-      endListener?.remove()
-      errorListener?.remove()
-    }
-  })
+  const isMockMode = !api.current.isNativeAvailable();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-      {/* Header */}
-      <header style={{
-        padding: '12px 16px',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-secondary)',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ fontSize: '18px', fontWeight: 600 }}>🧠 Bonsai</h1>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {modelLoaded && (
-              <span style={{
-                fontSize: '11px',
-                padding: '2px 8px',
-                borderRadius: '9999px',
-                background: 'var(--success)',
-                color: '#000',
-                fontWeight: 600,
-              }}>
-                {currentModelId}
-              </span>
-            )}
-            {messages.length > 0 && (
-              <button onClick={clearMessages} style={btnGhost}>Clear</button>
-            )}
-          </div>
-        </div>
-
-        {/* Model selector */}
-        <ModelSelector
-          models={models}
-          selectedModel={selectedModel}
-          onSelect={loadModel}
-          loading={loading}
-          onFetchModels={fetchModels}
-        />
-
-        {/* System prompt */}
-        <input
-          type="text"
-          placeholder="System prompt (optional)"
-          value={systemPrompt}
-          onChange={e => setSystemPrompt(e.target.value)}
-          style={{
-            marginTop: '8px',
-            width: '100%',
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-input)',
-            color: 'var(--text-primary)',
-            fontSize: '13px',
-            outline: 'none',
-          }}
-        />
+    <>
+      <header className="header">
+        <h1>Project Proxy</h1>
+        <button className="model-badge" onClick={() => setShowModelPicker(true)}>
+          <span className={`status-dot ${isModelLoaded ? 'loaded' : isModelLoading ? 'loading' : ''}`} />
+          {currentModel.name}
+          {isMockMode && ' (mock)'}
+        </button>
       </header>
 
-      {/* Error bar */}
-      {error && (
-        <div style={{
-          padding: '8px 16px',
-          background: 'rgba(231, 76, 60, 0.15)',
-          color: 'var(--danger)',
-          fontSize: '13px',
-          borderBottom: '1px solid rgba(231, 76, 60, 0.3)',
-          flexShrink: 0,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <span>{error}</span>
-          <button onClick={() => setError(null)} style={btnGhost}>✕</button>
-        </div>
-      )}
-
-      {/* Chat area */}
       <ChatView
         messages={messages}
         isStreaming={isStreaming}
-        modelLoaded={modelLoaded}
-        onSend={sendMessage}
-        onStop={stopGeneration}
+        onSend={handleSend}
+        onStop={handleStop}
+        disabled={!isModelLoaded}
       />
-    </div>
-  )
-}
 
-const btnGhost: React.CSSProperties = {
-  background: 'transparent',
-  border: '1px solid var(--border)',
-  color: 'var(--text-secondary)',
-  borderRadius: '6px',
-  padding: '4px 10px',
-  fontSize: '12px',
-  cursor: 'pointer',
+      {showModelPicker && (
+        <ModelSelector
+          models={MODELS}
+          currentModel={currentModel}
+          onSelect={handleModelSelect}
+          onClose={() => setShowModelPicker(false)}
+        />
+      )}
+    </>
+  );
 }

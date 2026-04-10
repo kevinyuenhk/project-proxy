@@ -1,15 +1,15 @@
-import { CapacitorConfig } from '@capacitor/cli'
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.prismml.projectproxy',
+  appId: 'com.projectproxy.app',
   appName: 'Project Proxy',
   webDir: 'dist',
-  ios: {
-    scheme: 'ProjectProxy',
+  server: {
+    androidScheme: 'https',
   },
   plugins: {
     BonsaiPlugin: {},
   },
-}
+};
 
-export default config
+export default config;

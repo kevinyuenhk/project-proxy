@@ -1,136 +1,165 @@
 # Project Proxy
 
-Hybrid iOS app running the Bonsai LLM natively via MLX Swift, with a web frontend for remote testing via Capacitor.
+Hybrid iOS app running **Bonsai 1-bit LLMs** on-device via **MLX** (PrismML fork) + **Capacitor** web frontend.
 
 ## Architecture
 
-```
-project-proxy/
-├── BonsaiEngine/          # Swift Package — MLX Bonsai LLM wrapper
-│   ├── Sources/BonsaiEngine/
-│   │   ├── BonsaiEngine.swift      # Main engine: load, generate, stream
-│   │   └── BonsaiModels.swift      # Model registry (1.7B / 4B / 8B)
-│   └── Package.swift               # Depends on PrismML-Eng/mlx-swift (prism branch)
-├── ios/
-│   └── App/BonsaiPlugin.swift      # Capacitor plugin bridge
-├── src/                   # React + TypeScript web frontend
-│   ├── App.tsx                   # Main app with state management
-│   ├── components/
-│   │   ├── ChatView.tsx           # Chat interface + input
-│   │   ├── MessageBubble.tsx      # Message rendering
-│   │   └── ModelSelector.tsx      # Model dropdown
-│   └── main.tsx
-├── capacitor.config.ts
-├── package.json
-├── index.html
-├── vite.config.ts
-└── tsconfig.json
-```
+- **Web frontend**: React + Vite + TypeScript — chat UI with streaming support
+- **Native bridge**: Capacitor plugin (Swift) exposes model operations to the web layer
+- **MLX engine**: PrismML's fork of MLX Swift provides custom 1-bit dequantization kernels
+- **Models**: Bonsai 8B/4B/1.7B from HuggingFace (Apache 2.0, no auth needed)
 
-## Setup
+## Prerequisites
 
-### Prerequisites
+- **macOS** with Apple Silicon (M1+)
+- **Xcode 16+** (for iOS native build)
+- **Node.js 20+** and npm
+- **iOS 17+** target
 
-- Xcode 16+
-- Node.js 20+
-- Apple Silicon Mac (M1+)
-- HuggingFace token (Bonsai repos are private)
-
-### 1. Web Frontend
+## Quick Start (Web Dev — Mock Mode)
 
 ```bash
 cd project-proxy
 npm install
-npm run dev          # Dev server at http://localhost:3000
+npm run dev
+# Open http://localhost:3000 — works in any browser with simulated responses
 ```
 
-The web frontend works standalone with mock responses for UI development.
+## iOS Build
 
-### 2. iOS / Capacitor
+### 1. Install dependencies & build web
 
 ```bash
-npm run build        # Build the web app
-npx cap add ios      # Create iOS project (first time)
-npx cap sync         # Sync web assets + plugins
-npx cap open ios     # Open in Xcode
+npm install
+npm run build
 ```
 
-#### In Xcode:
-
-1. Add `BonsaiEngine` as a local Swift Package dependency (path: `../BonsaiEngine`)
-2. Add `BonsaiPlugin.swift` to the iOS app target
-3. Register the plugin in your `AppDelegate.swift` or let Capacitor auto-discover it
-4. Set `PRISM_HF_TOKEN` in your build scheme's environment variables (or code it in for testing)
-
-### 3. HuggingFace Token
-
-The Bonsai MLX models (`prism-ml/Bonsai-*-mlx-1bit`) are in private repos. You need:
+### 2. Add iOS platform
 
 ```bash
-export PRISM_HF_TOKEN=hf_your_token_here
+npx cap add ios
+npx cap sync ios
 ```
 
-Or set it in Xcode's scheme environment variables.
+### 3. Integrate the Bonsai native plugin
 
-## BonsaiEngine API
+In Xcode (after `npx cap open ios`):
 
-```swift
-let engine = BonsaiEngine()
+1. **Add Swift Package dependencies** to your project:
+   - `https://github.com/PrismML-Eng/mlx-swift.git` — branch `prism` (CRITICAL: upstream MLX lacks 1-bit kernels)
+   - `https://github.com/ml-explore/mlx-swift-lm.git` — branch `main`
 
-// Load a model
-try await engine.loadModel(modelId: "Bonsai-8B-mlx-1bit")
+2. **Add source files** from `ios/Sources/` to your Xcode target:
+   - `BonsaiEngine/BonsaiEngine.swift`
+   - `BonsaiPlugin/BonsaiPlugin.swift`
 
-// Check state
-engine.isModelLoaded   // true
-engine.currentModelId  // "Bonsai-8B-mlx-1bit"
+3. **Register the plugin** in your `AppDelegate.swift`:
+   ```swift
+   import Capacitor
 
-// Full generation
-let response = try await engine.generate(prompt: "Hello!")
-print(response)
+   func application(_ application: UIApplication, didFinishLaunchingWithOptions ...) -> Bool {
+       // Auto-registration handled by CAP_PLUGIN macro
+       return true
+   }
+   ```
 
-// Streaming
-try await engine.stream(prompt: "Tell me a story") { token in
-    print(token, terminator: "")
-}
+4. **Set minimum deployment target** to iOS 17.0+
 
-// Stop
-await engine.stopGeneration()
+5. **Build & run** on a real device (Metal performance required for practical inference)
 
-// Available models
-let models = await engine.getModels()
+### 4. Run
+
+```bash
+npx cap run ios
+# or open in Xcode: npx cap open ios
+```
+
+## Models
+
+All models are public on HuggingFace, no token required:
+
+| Model | Repo | Size |
+|-------|------|------|
+| Bonsai 8B | `prism-ml/Bonsai-8B-mlx-1bit` | 1.15 GB |
+| Bonsai 4B | `prism-ml/Bonsai-4B-mlx-1bit` | 0.57 GB |
+| Bonsai 1.7B | `prism-ml/Bonsai-1.7B-mlx-1bit` | 0.27 GB |
+
+Models are downloaded on first load and cached in the app's Documents directory.
+
+**Default model**: Bonsai 8B (best quality). Use the model picker to switch sizes.
+
+### Memory Requirements (approximate)
+
+| Model | Context 4K | Context 32K |
+|-------|-----------|-------------|
+| 8B | ~2.5 GB | ~6 GB |
+| 4B | ~1.5 GB | ~3 GB |
+| 1.7B | ~0.8 GB | ~1.5 GB |
+
+> **Simulator note**: The iOS Simulator has limited GPU resources. For usable inference speeds, run on a real Apple Silicon device (iPhone 15 Pro+ or iPad with M1+).
+
+## Why PrismML Fork?
+
+Bonsai models use **1-bit quantization** — a novel compression format where each weight is stored in a single bit. This requires custom Metal kernels for dequantization that are **not yet upstream** in Apple's MLX or llama.cpp.
+
+| Component | PrismML Fork | Upstream |
+|-----------|-------------|----------|
+| MLX Swift | ✅ 1-bit kernels | ❌ Missing |
+| MLX Python | ✅ 1-bit kernels | ❌ Missing |
+| llama.cpp | ✅ Metal + CPU | ❌ Missing (PR pending) |
+
+Using the upstream `ml-explore/mlx-swift` will fail to load Bonsai models with errors about unsupported quantization types.
+
+## Project Structure
+
+```
+├── src/                          # Web frontend (React + Vite + TS)
+│   ├── App.tsx                   # Main app component
+│   ├── App.css                   # Dark theme styles
+│   ├── main.tsx                  # Entry point
+│   ├── bonsai-api.ts             # Plugin API abstraction (mock + native)
+│   └── components/
+│       ├── ChatView.tsx          # Chat message list + scroll
+│       ├── MessageBubble.tsx     # Single message render
+│       ├── InputBar.tsx          # Text input + send/stop button
+│       └── ModelSelector.tsx     # Bottom sheet model picker
+├── ios/
+│   ├── Package.swift             # Swift package definition
+│   └── Sources/
+│       ├── BonsaiEngine/         # Core MLX inference engine
+│       │   └── BonsaiEngine.swift
+│       ├── BonsaiPlugin/         # Capacitor plugin bridge
+│       │   └── BonsaiPlugin.swift
+│       └── BonsaiPluginObjC/     # ObjC registration macro
+│           └── BonsaiPluginObjC.m
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── capacitor.config.ts
+├── index.html
+└── README.md
 ```
 
 ## Capacitor Plugin API
 
-Exposed to the web frontend via `BonsaiPlugin`:
+The native plugin exposes these methods to the web layer:
 
-| Method | Params | Returns |
-|--------|--------|---------|
-| `loadModel` | `{ modelId }` | `{ loaded, modelId }` |
-| `generate` | `{ prompt, systemPrompt? }` | `{ text }` |
-| `startStream` | `{ prompt, systemPrompt? }` | emits `streamToken` events |
-| `stopGeneration` | — | — |
-| `getModels` | — | `{ models: [...] }` |
-| `isLoaded` | — | `{ loaded, modelId? }` |
+| Method | Description |
+|--------|-------------|
+| `loadModel({ modelId })` | Download + load a model |
+| `generate({ messages, stream })` | Generate response, stream emits `streamToken` events |
+| `stopGeneration()` | Cancel ongoing generation |
+| `getModels()` | List available models |
+| `getLoadedModel()` | Current model info |
+| `getPerformance()` | Memory usage, tokens/sec |
 
-### Stream Events
+## Mock Mode
 
-- `streamStart` — streaming begun
-- `streamToken` — `{ token: string }` each token
-- `streamEnd` — streaming complete
-- `streamError` — `{ error: string }` on failure
+When running in a browser (not inside Capacitor), the app uses `MockBonsaiAPI` which provides:
+- Simulated streaming responses with realistic delays
+- Contextual responses to common prompts ("hello", "who are you", etc.)
+- Full UI functionality for development without Xcode
 
-## Available Models
+## License
 
-| Model | Repo | VRAM |
-|-------|------|------|
-| Bonsai 1.7B | `prism-ml/Bonsai-1.7B-mlx-1bit` | ~2 GB |
-| Bonsai 4B | `prism-ml/Bonsai-4B-mlx-1bit` | ~4 GB |
-| Bonsai 8B | `prism-ml/Bonsai-8B-mlx-1bit` | ~6 GB |
-
-## Development Notes
-
-- The web frontend works standalone with mock responses — no iOS device needed for UI work
-- `mlx-swift-lm` is NOT a separate repo under PrismML-Eng; the LM code is bundled in the `PrismML-Eng/mlx-swift` fork (prism branch)
-- The scaffold targets the upstream `mlx-swift-lm` v3 API patterns (`loadModel`, `ChatSession`, `ModelContainer`)
-- iOS on-device inference requires Apple Silicon (A12+ for 1.7B, M1+ recommended for 4B/8B)
+Apache 2.0 (Bonsai models) + MIT (code)
