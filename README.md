@@ -25,6 +25,47 @@ npm run dev
 # Open http://localhost:3000 — works in any browser with simulated responses
 ```
 
+## macOS / Web — llama.cpp Server Mode
+
+You can run Bonsai on macOS using a llama.cpp server instead of the iOS native plugin. The web UI auto-detects the server and connects via HTTP.
+
+### Setup
+
+```bash
+# 1. Clone and set up the Bonsai demo (downloads llama.cpp binary + GGUF model)
+git clone https://github.com/PrismML-Eng/Bonsai-demo.git ~/Bonsai-demo
+cd ~/Bonsai-demo
+./setup.sh
+
+# 2. Start the llama.cpp server
+./scripts/start_llama_server.sh
+# Server runs at http://localhost:8080
+
+# 3. In another terminal, start the web UI
+cd project-proxy
+npm install
+npm run dev
+# Open http://localhost:3000 — the UI will connect to the server automatically
+```
+
+Or use the helper script:
+
+```bash
+./scripts/start-server.sh
+```
+
+### How it works
+
+- The web UI checks for the native Capacitor plugin first
+- If not available (running in a browser), it connects to `http://localhost:8080` via the OpenAI-compatible API
+- A status indicator in the header shows the connection state (🟢 Server / 🔴 Server / 🟡 Mock)
+- Click the status badge to configure a custom server URL
+- If the server isn't running, the UI shows setup instructions
+
+### GGUF Model
+
+The llama.cpp server uses the GGUF quantized model from [prism-ml/Bonsai-8B-gguf](https://huggingface.co/prism-ml/Bonsai-8B-gguf) (public, no auth needed).
+
 ## iOS Build
 
 ### 1. Install dependencies & build web
@@ -117,7 +158,7 @@ Using the upstream `ml-explore/mlx-swift` will fail to load Bonsai models with e
 │   ├── App.tsx                   # Main app component
 │   ├── App.css                   # Dark theme styles
 │   ├── main.tsx                  # Entry point
-│   ├── bonsai-api.ts             # Plugin API abstraction (mock + native)
+│   ├── bonsai-api.ts             # Plugin API abstraction (mock + native + HTTP)
 │   └── components/
 │       ├── ChatView.tsx          # Chat message list + scroll
 │       ├── MessageBubble.tsx     # Single message render

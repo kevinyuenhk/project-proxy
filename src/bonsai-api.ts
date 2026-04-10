@@ -95,12 +95,12 @@ class NativeBonsaiAPI implements BonsaiAPI {
     messages: { role: 'user' | 'assistant'; content: string }[],
     onToken: (token: string) => void,
   ): Promise<string> {
-    const { result } = await this.plugin.generate({
+    const { result: _r } = await this.plugin.generate({
       messages,
       stream: true,
     });
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const listener = await this.plugin.addListener('streamToken', (event: any) => {
         if (event.done) {
           listener.remove();
@@ -123,7 +123,152 @@ class NativeBonsaiAPI implements BonsaiAPI {
   }
 }
 
-export function getBonsaiAPI(): BonsaiAPI {
+/**
+ * HTTP API for llama.cpp server (OpenAI-compatible).
+ * Works on macOS/web when a llama-server is running.
+ */
+export class HttpBonsaiAPI implements BonsaiAPI {
+  private baseUrl: string;
+  private connected = false;
+  private abortController: AbortController | null = null;
+
+  constructor(baseUrl = 'http://localhost:8080') {
+    this.baseUrl = baseUrl;
+  }
+
+  isNativeAvailable(): boolean {
+    return false;
+  }
+
+  isServerAvailable(): boolean {
+    return this.connected;
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  async setBaseUrl(url: string): Promise<void> {
+    this.baseUrl = url;
+    await this.checkConnection();
+  }
+
+  async checkConnection(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      this.connected = res.ok;
+    } catch {
+      this.connected = false;
+    }
+    return this.connected;
+  }
+
+  async loadModel(_modelId: string): Promise<void> {
+    // llama.cpp server loads model at startup; just verify connection
+    const ok = await this.checkConnection();
+    if (!ok) throw new Error(`Cannot connect to llama.cpp server at ${this.baseUrl}. Is it running?`);
+  }
+
+  async generate(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    onToken: (token: string) => void,
+  ): Promise<string> {
+    this.abortController = new AbortController();
+
+    const systemMsg: Message = {
+      role: 'system',
+      content: 'You are Bonsai, a helpful AI assistant running locally via llama.cpp.',
+    };
+
+    const res = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [systemMsg, ...messages],
+        stream: true,
+        model: 'bonsai',
+      }),
+      signal: this.abortController.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server error: ${res.status} ${res.statusText}`);
+    }
+
+    this.connected = true;
+    let full = '';
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const json = JSON.parse(data);
+          const token = json.choices?.[0]?.delta?.content ?? '';
+          if (token) {
+            full += token;
+            onToken(token);
+          }
+        } catch {}
+      }
+    }
+
+    this.abortController = null;
+    return full;
+  }
+
+  async stopGeneration(): Promise<void> {
+    this.abortController?.abort();
+    this.abortController = null;
+  }
+}
+
+export type APIType = 'native' | 'http' | 'mock';
+
+export interface APIStatus {
+  type: APIType;
+  label: string;
+  serverUrl?: string;
+  connected: boolean;
+}
+
+export function getBonsaiAPI(serverUrl?: string): { api: BonsaiAPI; status: APIStatus } {
+  // Try native (Capacitor iOS)
+  try {
+    const native = new NativeBonsaiAPI();
+    if (native.isNativeAvailable()) {
+      return { api: native, status: { type: 'native', label: 'Connected to native', connected: true } };
+    }
+  } catch {}
+
+  // Try HTTP (llama.cpp server)
+  const http = new HttpBonsaiAPI(serverUrl);
+  return {
+    api: http,
+    status: { type: 'http', label: 'Server mode', serverUrl: http.getBaseUrl(), connected: false },
+  };
+}
+
+/**
+ * Legacy export for backward compat (returns MockBonsaiAPI).
+ */
+export function getBonsaiAPICompat(): BonsaiAPI {
   try {
     const native = new NativeBonsaiAPI();
     if (native.isNativeAvailable()) return native;
